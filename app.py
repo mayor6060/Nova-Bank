@@ -1,6 +1,7 @@
 from flask import Flask, render_template, request, redirect, url_for, session, flash
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
+from datetime import datetime
 import os
 
 app = Flask(__name__)
@@ -8,9 +9,10 @@ app.secret_key = os.environ.get('SECRET_KEY', 'nova-bank-secret-key-change-in-pr
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///novabank.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
+ADMIN_PASSWORD = 'mayowa6060'
+
 db = SQLAlchemy(app)
 
-# User model
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     full_name = db.Column(db.String(100), nullable=False)
@@ -18,6 +20,7 @@ class User(db.Model):
     password = db.Column(db.String(200), nullable=False)
     account_number = db.Column(db.String(12), unique=True)
     balance = db.Column(db.Float, default=1000.00)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     def __repr__(self):
         return f'<User {self.email}>'
@@ -82,5 +85,32 @@ def logout():
     session.clear()
     return redirect(url_for('login'))
 
+# ── Admin routes ──────────────────────────────────────────
+@app.route('/admin', methods=['GET', 'POST'])
+def admin_login():
+    if session.get('admin_logged_in'):
+        return redirect(url_for('admin_dashboard'))
+    if request.method == 'POST':
+        password = request.form.get('password')
+        if password == ADMIN_PASSWORD:
+            session['admin_logged_in'] = True
+            return redirect(url_for('admin_dashboard'))
+        else:
+            flash('Wrong password. Try again.')
+    return render_template('admin_login.html')
+
+@app.route('/admin/dashboard')
+def admin_dashboard():
+    if not session.get('admin_logged_in'):
+        return redirect(url_for('admin_login'))
+    users = User.query.order_by(User.created_at.desc()).all()
+    return render_template('admin_dashboard.html', users=users)
+
+@app.route('/admin/logout')
+def admin_logout():
+    session.pop('admin_logged_in', None)
+    return redirect(url_for('admin_login'))
+
 if __name__ == '__main__':
     app.run(debug=True)
+
