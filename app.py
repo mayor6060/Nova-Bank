@@ -6,7 +6,13 @@ import os
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'nova-bank-secret-key-change-in-production')
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///novabank.db')
+
+# Fix postgres:// to postgresql:// for SQLAlchemy
+database_url = os.environ.get('DATABASE_URL', 'sqlite:///novabank.db')
+if database_url.startswith('postgres://'):
+    database_url = database_url.replace('postgres://', 'postgresql://', 1)
+
+app.config['SQLALCHEMY_DATABASE_URI'] = database_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 ADMIN_PASSWORD = 'mayowa6060'
@@ -21,9 +27,6 @@ class User(db.Model):
     account_number = db.Column(db.String(12), unique=True)
     balance = db.Column(db.Float, default=1000.00)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
-
-    def __repr__(self):
-        return f'<User {self.email}>'
 
 with app.app_context():
     db.create_all()
@@ -52,11 +55,9 @@ def register():
         full_name = request.form.get('full_name')
         email = request.form.get('email')
         password = request.form.get('password')
-
         if User.query.filter_by(email=email).first():
             flash('An account with this email already exists.')
             return render_template('register.html')
-
         import random
         account_number = ''.join([str(random.randint(0, 9)) for _ in range(12)])
         hashed_password = generate_password_hash(password)
@@ -78,6 +79,9 @@ def dashboard():
     if 'user_id' not in session:
         return redirect(url_for('login'))
     user = User.query.get(session['user_id'])
+    if user is None:
+        session.clear()
+        return redirect(url_for('login'))
     return render_template('dashboard.html', user=user)
 
 @app.route('/logout')
@@ -85,7 +89,6 @@ def logout():
     session.clear()
     return redirect(url_for('login'))
 
-# ── Admin routes ──────────────────────────────────────────
 @app.route('/admin', methods=['GET', 'POST'])
 def admin_login():
     if session.get('admin_logged_in'):
@@ -113,4 +116,3 @@ def admin_logout():
 
 if __name__ == '__main__':
     app.run(debug=True)
-
